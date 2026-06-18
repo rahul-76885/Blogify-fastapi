@@ -1,0 +1,1 @@
+# we installed fast api standard bc it comes with uvicorn an asgi server to run the application and clommands control run the fast api from cli
