@@ -2,31 +2,18 @@ from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 #------------------------------------------------------------------------------------------------
-# FastAPI() needs no args. Flask needs __name__ to auto-find folders.
 # FastAPI is explicit — you configure everything yourself.
 #------------------------------------------------------------------------------------------------
 app = FastAPI()
 # Here we create an instance of FastAPI so we can attach routes, configurations, and endpoints to the application.
-# Flask auto-serves static/ with zero config.
 # FastAPI requires explicit mounting — it's API-first, static is optional.
 # name="static" lets templates use: {{ request.url_for('static', path='...') }}
 app.mount("/static", StaticFiles(directory="blog/static"), name="static")
-
-# Flask auto-discovers templates/ folder.
+app.mount("/media",StaticFiles(directory="blog/media"),name="media")
 # FastAPI needs an explicit object — no hidden globals, fully testable.
 templates = Jinja2Templates(directory="blog/templates")
 
 from blog import routes
-
-
-
-
-
-
-
-
-
-
 
 
 
