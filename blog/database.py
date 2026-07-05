@@ -1,5 +1,5 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.ext.asyncio  import AsyncSession, create_async_engine ,async_sessionmaker
+from sqlalchemy.orm import  DeclarativeBase
 
 # ---------------------------------------------------------------------------
 # Database location
@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 # project/
 #    blog.db   ← tables live here
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./blog.db"
+SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///./blog.db"
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///./blog.db"
 #   Without this → crash: "SQLite objects created in a thread can only
 #   be used in that same thread."
 
-engine = create_engine(
+engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
 )
@@ -57,10 +57,10 @@ engine = create_engine(
 #
 # bind=engine       → every session created here talks to this engine.
 
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine,
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
 )
 
 
@@ -170,9 +170,7 @@ class Base(DeclarativeBase):
 #   Prevents session conflicts, memory leaks, and shared state
 #   between requests.
 
-def get_db():
-   db=SessionLocal() #with SessionLocal() as db: #context manager
-   try:
-    yield db
-   finally:
-    db.close()
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
+        
