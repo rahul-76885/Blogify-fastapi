@@ -624,3 +624,644 @@ CPU-bound → Multiprocessing
 -   `AsyncSession` enables non-blocking database access.
 -   `Depends(get_db)` provides one session per request.
 -   Use AsyncIO for scalable APIs.
+---
+
+# FastAPI Application Lifespan
+
+Modern FastAPI applications use **Lifespan** to manage resources that should be initialized once when the application starts and cleaned up once when the application stops.
+
+Examples include:
+
+- Database connections
+- Database engines
+- Redis connections
+- Machine Learning models
+- Cache initialization
+- External API clients
+
+Instead of initializing these resources on every request, they are initialized only once during application startup.
+
+---
+
+# Evolution of FastAPI Startup & Shutdown
+
+## Old Method
+
+Earlier versions of FastAPI recommended using two separate event decorators.
+
+```python
+@app.on_event("startup")
+async def startup():
+    ...
+
+@app.on_event("shutdown")
+async def shutdown():
+    ...
+```
+
+Startup and shutdown logic were written in separate functions.
+
+Although this still works in many applications, the recommended modern approach is to use **Lifespan**.
+
+---
+
+## Modern Method
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    ...
+
+    yield
+
+    ...
+```
+
+The lifespan function combines startup and shutdown logic into one place.
+
+This makes resource management easier to understand and maintain.
+
+---
+
+# What is Lifespan?
+
+Lifespan represents the complete lifecycle of the FastAPI application.
+
+```
+Application Starts
+        │
+        ▼
+Startup Code
+        │
+        ▼
+Application Running
+        │
+        ▼
+Shutdown Code
+        │
+        ▼
+Application Stops
+```
+
+Everything before `yield` executes only once during startup.
+
+Everything after `yield` executes only once during shutdown.
+
+---
+
+# Why do we pass lifespan into FastAPI?
+
+```python
+app = FastAPI(
+    lifespan=lifespan
+)
+```
+
+Earlier we registered startup and shutdown functions separately.
+
+Now we register one lifespan function.
+
+Conceptually FastAPI performs something similar to
+
+```python
+async with lifespan(app):
+
+    # Handle incoming requests
+```
+
+The lifespan function tells FastAPI
+
+> "Use this function to manage the application's lifetime."
+
+---
+
+# Understanding Context Managers
+
+Before understanding `asynccontextmanager`, it is important to understand what a Context Manager is.
+
+Consider opening a file.
+
+```python
+with open("data.txt") as file:
+
+    data = file.read()
+```
+
+Execution flow
+
+```
+Open File
+
+↓
+
+Use File
+
+↓
+
+Close File
+```
+
+The file is automatically closed even if an exception occurs.
+
+A Context Manager is responsible for acquiring a resource and releasing it safely.
+
+Common resources include
+
+- Files
+- Database connections
+- Locks
+- Network sockets
+- Cache connections
+
+---
+
+# Why Context Managers?
+
+Without a Context Manager
+
+```python
+file = open("data.txt")
+
+data = file.read()
+
+raise Exception()
+
+file.close()
+```
+
+If an exception occurs,
+
+```
+file.close()
+```
+
+never executes.
+
+The file remains open.
+
+This is called a resource leak.
+
+Context Managers guarantee proper cleanup.
+
+---
+
+# Context Manager vs Normal Function
+
+A normal function simply executes and finishes.
+
+```
+Start
+
+↓
+
+Execute
+
+↓
+
+Return
+
+↓
+
+Finished
+```
+
+A Context Manager has three phases.
+
+```
+Enter
+
+↓
+
+Use Resource
+
+↓
+
+Exit
+```
+
+This makes it ideal for managing application resources.
+
+---
+
+# Synchronous Context Manager
+
+Python provides
+
+```python
+from contextlib import contextmanager
+```
+
+Example
+
+```python
+from contextlib import contextmanager
+
+@contextmanager
+def demo():
+
+    print("Enter")
+
+    yield
+
+    print("Exit")
+```
+
+Used with
+
+```python
+with demo():
+
+    print("Inside")
+```
+
+Execution
+
+```
+Enter
+
+↓
+
+Inside
+
+↓
+
+Exit
+```
+
+---
+
+# Asynchronous Context Manager
+
+For asynchronous applications Python provides
+
+```python
+from contextlib import asynccontextmanager
+```
+
+Example
+
+```python
+@asynccontextmanager
+async def demo():
+
+    print("Enter")
+
+    yield
+
+    print("Exit")
+```
+
+Used with
+
+```python
+async with demo():
+
+    print("Inside")
+```
+
+Execution
+
+```
+Enter
+
+↓
+
+Inside
+
+↓
+
+Exit
+```
+
+The concept is identical.
+
+The only difference is that asynchronous resources require
+
+```
+async with
+```
+
+instead of
+
+```
+with
+```
+
+---
+
+# What does @asynccontextmanager do?
+
+`@asynccontextmanager` is **not** a FastAPI feature.
+
+It is a Python feature from
+
+```python
+contextlib
+```
+
+Its purpose is to convert a normal asynchronous function into an asynchronous context manager.
+
+Without it
+
+```python
+async def lifespan():
+
+    ...
+```
+
+the function is just a normal async function.
+
+It cannot be used with
+
+```python
+async with
+```
+
+After adding
+
+```python
+@asynccontextmanager
+```
+
+the function becomes an Async Context Manager that FastAPI can use.
+
+---
+
+# Difference Between Normal Async Function and Async Context Manager
+
+## Normal Async Function
+
+```python
+async def hello():
+
+    print("Hello")
+
+    return
+```
+
+Execution
+
+```
+await hello()
+
+↓
+
+Start
+
+↓
+
+Execute
+
+↓
+
+Return
+
+↓
+
+Finished
+```
+
+Once it returns, execution is complete.
+
+---
+
+## Async Context Manager
+
+```python
+@asynccontextmanager
+async def demo():
+
+    print("Startup")
+
+    yield
+
+    print("Shutdown")
+```
+
+Execution
+
+```
+async with demo():
+
+    print("Running")
+```
+
+Flow
+
+```
+Startup
+
+↓
+
+yield
+
+↓
+
+Running
+
+↓
+
+Shutdown
+```
+
+Unlike a normal async function, execution pauses at `yield` and resumes later.
+
+---
+
+# Understanding yield inside Lifespan
+
+Inside the lifespan function,
+
+`yield` separates startup and shutdown.
+
+```
+Before yield
+
+↓
+
+Startup Code
+
+↓
+
+yield
+
+↓
+
+Application Handles Requests
+
+↓
+
+After yield
+
+↓
+
+Shutdown Code
+```
+
+Everything before `yield`
+
+- Executes once
+- Before the server accepts requests
+
+Everything after `yield`
+
+- Executes once
+- When the server is shutting down
+
+---
+
+# Does yield stop execution?
+
+Yes.
+
+`yield` pauses the function.
+
+Execution resumes only after FastAPI finishes running the application.
+
+Conceptually
+
+```
+Create Resources
+
+↓
+
+yield
+
+↓
+
+Server Runs For Hours
+
+↓
+
+Resume
+
+↓
+
+Release Resources
+```
+
+This behaviour makes lifespan ideal for resource management.
+
+---
+
+# Lifespan Flow in This Project
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield
+
+    await engine.dispose()
+```
+
+Execution
+
+```
+Application Starts
+
+↓
+
+Create Database Tables
+
+↓
+
+yield
+
+════════════════════════════════════
+
+Application Running
+
+GET /users
+
+POST /posts
+
+GET /
+
+PATCH /users
+
+...
+
+════════════════════════════════════
+
+↓
+
+Server Stops
+
+↓
+
+Dispose Database Engine
+
+↓
+
+Application Ends
+```
+
+---
+
+# Why do we use Lifespan?
+
+Resources like database engines should
+
+- be created once
+- be reused
+- be closed properly
+
+Lifespan provides a single place to perform startup and shutdown work.
+
+This keeps initialization logic together and avoids splitting related code across multiple functions.
+
+---
+
+# Why is Lifespan preferred over @app.on_event?
+
+Old approach
+
+```
+startup()
+
+...
+
+shutdown()
+```
+
+Two different functions.
+
+Modern approach
+
+```
+lifespan()
+
+↓
+
+Startup
+
+↓
+
+Application Running
+
+↓
+
+Shutdown
+```
+
+Everything related to the application's lifetime is grouped together.
+
+This improves readability and follows the ASGI Lifespan specification used by FastAPI.
+
+---
+
+# Key Takeaways
+
+- Lifespan represents the complete lifecycle of the application.
+- Everything before `yield` executes once during startup.
+- Everything after `yield` executes once during shutdown.
+- `@asynccontextmanager` is a Python feature, not a FastAPI feature.
+- It converts a normal async function into an Async Context Manager.
+- FastAPI internally uses the lifespan function as an asynchronous context manager.
+- `yield` pauses execution while the application serves requests.
+- Lifespan replaces the older startup/shutdown event approach and is the recommended modern pattern.
